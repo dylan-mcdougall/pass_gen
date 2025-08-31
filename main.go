@@ -15,60 +15,132 @@ func main() {
 	var noNums bool
 	var noUpper bool
 	var noLower bool
-	var includeUnsafe bool
+	var includeExtra bool
+	var requiredLen int = 0
 
-	flag.IntVar(&length, "length", 16, "Password Length")
 	flag.IntVar(&length, "l", 16, "Password Length")
-	flag.IntVar(&numPasswords, "number", 1, "Number of Passwords")
 	flag.IntVar(&numPasswords, "n", 1, "Number of Passwords")
-
-	flag.BoolVar(&noSymbols, "no-symbols", false, "Exclude Symbols")
-	flag.BoolVar(&noNums, "no-num", false, "Exclude Numbers")
-	flag.BoolVar(&noUpper, "no-upper", false, "Exclude Uppercase Characters")
-	flag.BoolVar(&noLower, "no-lower", false, "Exclude Lowercase Characters")
-
-	flag.BoolVar(&includeUnsafe, "unsafe", false, "Include Problematic Symbols")
+	flag.BoolVar(&noSymbols, "s", false, "Exclude Symbols")
+	flag.BoolVar(&noNums, "d", false, "Exclude Numbers")
+	flag.BoolVar(&noUpper, "u", false, "Exclude Uppercase Characters")
+	flag.BoolVar(&noLower, "w", false, "Exclude Lowercase Characters")
+	flag.BoolVar(&includeExtra, "a", false, "Include Additional Symbols")
 
 	flag.Parse()
 
-	if (noSymbols && noNums && noUpper && noLower && !includeUnsafe) || length <= 0 {
+	if (noSymbols && noNums && noUpper && noLower && !includeExtra) || length <= 0 {
 		fmt.Println("Idk what you expected")
 		return
 	}
 
-	allowedChars := charBuilder(noSymbols, noNums, noUpper, noLower, includeUnsafe)
+	if !noSymbols {
+		requiredLen++
+	}
+	if !noNums {
+		requiredLen++
+	}
+	if !noUpper {
+		requiredLen++
+	}
+	if !noLower {
+		requiredLen++
+	}
+	if includeExtra {
+		requiredLen++
+	}
 
-	allowedCharsLen := int64(len(allowedChars))
+	if length < requiredLen {
+		fmt.Printf("Password must be at least %d characters long.", requiredLen)
+		return
+	}
 
-	result := make([]string, numPasswords)
+	allowedChars := charBuilder(noSymbols, noNums, noUpper, noLower, includeExtra)
+	charSets := charSetsBuilder(noSymbols, noNums, noUpper, noLower, includeExtra)
+	defer cleanMemory(allowedChars)
 
-	// TODO: Enforce at least one of each available option
 	for i := 0; i < numPasswords; i++ {
-		res := make([]byte, length)
-		for j := 0; j < length; j++ {
-			t, err := rand.Int(rand.Reader, big.NewInt(allowedCharsLen))
-			if err != nil {
-				fmt.Print("Error")
-				return
-			}
+		pass := generatePassword(length, allowedChars, charSets)
 
-			res[j] = allowedChars[t.Int64()]
+		if pass == nil {
+			fmt.Println("Error in generation.")
 		}
 
-		result[i] = string(res)
+		fmt.Printf("%s\n", string(pass))
+		cleanMemory(pass)
 	}
-
-	for i := range result {
-		fmt.Printf("%s\n", result[i])
-	}
-
-	// TODO: Move to byte format, compose and clear each byte
-	defer func() {
-		clear(result)
-	}()
 }
 
-func charBuilder(noSymbols, noNums, noUpper, noLower, includeUnsafe bool) string {
+// Generate a password while ensuring minimum differentiation between char sets
+func generatePassword(length int, allowedChars []byte, charSets [][]byte) []byte {
+	pass := make([]byte, length)
+	allowedCharsLen := int64(len(allowedChars))
+
+	used := make([]bool, length)
+
+	for _, charSet := range charSets {
+		charIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(charSet))))
+		if err != nil {
+			cleanMemory(pass)
+			return nil
+		}
+
+		var position int64
+		for {
+			pos, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
+			if err != nil {
+				cleanMemory(pass)
+				return nil
+			}
+
+			position = pos.Int64()
+			if !used[position] {
+				break
+			}
+		}
+
+		pass[position] = charSet[charIndex.Int64()]
+		used[position] = true
+	}
+
+	for i := 0; i < length; i++ {
+		if !used[i] {
+			randomIndex, err := rand.Int(rand.Reader, big.NewInt(allowedCharsLen))
+			if err != nil {
+				cleanMemory(pass)
+				return nil
+			}
+			pass[i] = allowedChars[randomIndex.Int64()]
+		}
+	}
+
+	return pass
+}
+
+// Create sets to guarantee minimum char per available charsets
+func charSetsBuilder(noSymbols, noNums, noUpper, noLower, includeExtra bool) [][]byte {
+	var sets [][]byte
+
+	if !noLower {
+		sets = append(sets, []byte("abcdefghijklmnopqrstuvwxyz"))
+	}
+	if !noUpper {
+		sets = append(sets, []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+	}
+	if !noNums {
+		sets = append(sets, []byte("0123456789"))
+	}
+	if !noSymbols {
+		sets = append(sets, []byte("!@#$%^&*_+-=,.<>?"))
+	}
+	if includeExtra {
+		sets = append(sets, []byte("())[]{}|;:"))
+	}
+
+	return sets
+}
+
+// Construct available characters
+func charBuilder(noSymbols, noNums, noUpper, noLower, includeExtra bool) []byte {
 	var chars strings.Builder
 
 	if !noLower {
@@ -83,9 +155,15 @@ func charBuilder(noSymbols, noNums, noUpper, noLower, includeUnsafe bool) string
 	if !noSymbols {
 		chars.WriteString("!@#$%^&*_+-=,.<>?")
 	}
-	if includeUnsafe {
+	if includeExtra {
 		chars.WriteString("())[]{}|;:")
 	}
 
-	return chars.String()
+	return []byte(chars.String())
+}
+
+func cleanMemory(data []byte) {
+	for i := range data {
+		data[i] = 0
+	}
 }
