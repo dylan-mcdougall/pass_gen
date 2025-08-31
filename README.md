@@ -5,7 +5,13 @@ A cryptographically secure password generator written in Go.
 ## Usage
 
 ```bash
-go run main.go [options]
+go run passgen.go [options]
+```
+
+or compile and run
+```bash
+go build passgen.go
+./passgen.go [options]
 ```
 
 ## Options
@@ -32,14 +38,14 @@ go run main.go [options]
 
 ```bash
 # Generate default 16-character password
-go run main.go
+go run passgen.go
 
 # Generate 3 passwords of 20 characters each
-go run main.go -l 20 -n 3
+go run passgen.go -l 20 -n 3
 
 # Generate password without symbols
-go run main.go -s
+go run passgen.go -s
 
 # Generate password with only letters and numbers
-go run main.go -s -a
+go run passgen.go -s -a
 ```
